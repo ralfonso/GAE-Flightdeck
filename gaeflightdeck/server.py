@@ -26,10 +26,8 @@ class LogNamespace(BaseNamespace, BroadcastMixin):
     def recv_connect(self):
         def sendlogs():
             while True:
-                while not q.empty():
-                    val = q.get(True)
-                    self.emit('log', {'line': val})
-                gevent.sleep(1)
+                val = q.get(True)
+                self.emit('log', {'line': val})
 
         self.spawn(sendlogs)
 
