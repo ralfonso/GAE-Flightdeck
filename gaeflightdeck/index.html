@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css">
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
+    <script src="/static/socket.io.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.0.1/angular.min.js"></script>
+    <script>
+
+angular.module('app', [])
+.controller('logs', function($scope, $document){
+  var levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'];
+  var socket = io.connect('/logs');
+  var filter_regex = null;
+
+  $scope.limit = 100;
+  $scope.requests = [];
+  $scope.incoming = [];
+  $scope.sticky = true;
+  $scope.search = '';
+
+  var process_data = function(data){
+    var parts = data.line.split(/\s+/);
+
+    data.level = parts[0];
+
+    if(levels.indexOf(data.level) !== -1){
+      data.date = parts[1];
+      data.time = parts[2];
+      data.source_file = parts[3].split(':')[0];
+      data.source_line = parts[3].split(':')[1].replace(']', '');
+
+      if(parts.length > 4){
+        data.module = parts[4].replace(':', '');
+      }
+
+      if(parts[3] === 'module.py:642]'){
+        data.method = parts[5].replace('"', '');
+        data.path = parts[6];
+        data.response_code = parts[8];
+        data.response_size = parts[9];
+        data.is_request = true;
+      } else {
+        data.message = parts.slice(4, parts.length).join(' ');
+        data.is_log = true;
+      }
+
+      if(data.is_request){
+        if($scope.incoming){
+          data.logs = $scope.incoming;
+          $scope.incoming = [];
+        }
+        $scope.requests.push(data);
+        if($scope.requests.length > $scope.limit){
+          $scope.requests = $scope.requests.slice(-$scope.limit);
+        }
+      } else if(data.is_log) {
+        $scope.incoming.push(data);
+      } else {
+        console.log(data);
+      }
+    } else {
+      console.log(data);
+    }
+  };
+
+  socket.on('log', function(data) {
+    $scope.$apply(function(){
+      process_data(data);
+    });
+  });
+
+  $scope.label_for = function(level){
+    return {
+      'DEBUG': 'primary',
+      'INFO': 'info',
+      'WARNING': 'warning',
+      'ERROR': 'danger',
+      'CRITICAL': 'danger'
+    }[level];
+  };
+
+  $scope.abbreviation_for = function(level){
+    return {
+      'DEBUG': 'λ',
+      'INFO': 'i',
+      'WARNING': '!',
+      'ERROR': '!!',
+      'CRITICAL': '!!!'
+    }[level];
+  };
+
+  $scope.search_filter = function(item, index){
+    if(!filter_regex) return true;
+    if(item.line.search(filter_regex) !== -1) return true;
+    if(!item.logs) return false;
+    for(var i = 0; i < item.logs.length; i++){
+      if(item.logs[i].line.search(filter_regex)) return true;
+    }
+    return false;
+  };
+
+  $scope.$watch('search', function(){
+    if(!$scope.search){
+      filter_regex = null;
+      $scope.error = null;
+    } else {
+      try{
+        $scope.error = null;
+        filter_regex = new RegExp($scope.search, "gi");
+      } catch(e) {
+        $scope.error = e.message;
+        filter_regex = null;
+      }
+    }
+  });
+
+  $scope.$watch('requests.length', function(){
+    if(!$scope.sticky) return;
+    setTimeout(function(){
+      $document.scrollTop($document.height());
+    });
+  });
+});
+
+  </script>
+  </head>
+<body ng-app="app" ng-controller="logs" style="padding-top: 70px;">
+
+<nav class="navbar navbar-default navbar-fixed-top" role="navigation">
+  <div class="container">
+    <form class="navbar-form navbar-left">
+      <div class="form-group">
+        <input type="text" class="form-control" length="3" style="width: 200px;" ng-model="search" placeholder="Filter by regex">
+      </div>
+    </form>
+    <form class="navbar-form navbar-right">
+      <div class="form-group">
+        Show
+        <input type="number" class="form-control" length="3" style="width: 65px;" ng-model="limit">
+        Logs&nbsp;
+      </div>
+      <button class="btn btn-primary pull-right" ng-click="sticky = !sticky">
+        <i class="glyphicon glyphicon-play" ng-show="!sticky"></i>
+        <i class="glyphicon glyphicon-pause" ng-show="sticky"></i>
+      </button>
+    </form>
+  </div>
+</nav>
+
+
+<div class="container">
+  <div class="alert alert-danger" role="alert" ng-show="error">{{error}}</div>
+  <div class="row" ng-repeat="request in requests | filter:search_filter">
+    <div class="col-sm-12">
+      <div class="row">
+        <div class="col-sm-2">
+          <span class="label label-{{label_for(request.level);}}">{{abbreviation_for(request.level)}}</span>
+          {{request.time}}
+        </div>
+        <div class="col-sm-1">
+          {{request.response_code}}
+        </div>
+        <div class="col-sm-1">
+          {{request.response_size}}
+        </div>
+        <div class="col-sm-8">
+          {{request.path}}
+        </div>
+      </div>
+    </div>
+    <div class="col-sm-12" ng-show="request.logs" style="background-color: #FAFAFA">
+      <div class="row" ng-repeat="log in request.logs">
+        <div class="col-sm-2" style="padding-left: 35px;">
+          <span class="label label-{{label_for(log.level);}}">{{abbreviation_for(log.level)}}</span>
+          {{log.time}}
+        </div>
+        <div class="col-sm-2">
+          {{log.source_file}}:{{log.source_line}}
+        </div>
+        <div class="col-sm-8">
+          {{log.message}}
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="row">
+    <div class="text-center">Incoming</div>
+    <div class="col-sm-12" ng-show="incoming.length" style="background-color: #FAFAFA">
+      <div class="row" ng-repeat="log in incoming">
+        <div class="col-sm-2" style="padding-left: 35px;">
+          <span class="label label-{{label_for(log.level);}}">{{abbreviation_for(log.level)}}</span>
+          {{log.time}}
+        </div>
+        <div class="col-sm-2">
+          {{log.source_file}}:{{log.source_line}}
+        </div>
+        <div class="col-sm-8">
+          {{log.message}}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
