@@ -9,7 +9,9 @@ version = '0.0.4'
 
 install_requires = [
     'gevent>=1.0.1',
-    'gevent-socketio>=0.3.6'
+    'gevent-socketio>=0.3.6',
+    'gevent-websocket>=0.9.3',
+    'colorama>=0.3.2'
 ]
 
 
