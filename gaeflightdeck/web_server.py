@@ -43,8 +43,13 @@ def not_found(start_response):
     return ['<h1>Not Found</h1>']
 
 
-def make_server(namespaces):
+def make_server(conf):
+
+    namespaces = conf['namespaces']
+    host = conf['host']
+    port = conf['port']
+
     return SocketIOServer(
-        ('127.0.0.1', 51324),
+        (host, port, ),
         Application(namespaces),
         resource="socket.io")
